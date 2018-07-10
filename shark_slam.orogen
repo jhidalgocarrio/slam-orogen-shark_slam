@@ -1,0 +1,81 @@
+name "shark_slam"
+# Optionally declare the version number
+# version "0.1"
+
+# If new data types need to be defined, they have to be put in a separate C++
+# header, and this header will be loaded here
+import_types_from "shark_slamTypes.hpp"
+# Finally, it is pretty common that headers are directly loaded from an external
+# library. In this case, the library must be first used (the name is the
+# library's pkg-config name) and then the header can be used. Following Rock
+# conventions, a common use-case would be:
+#
+using_library "gtsam" # Smoothing and Mapping library
+
+# If this project uses data types that are defined in other oroGen projects,
+# these projects should be imported there as well.
+import_types_from "base"
+
+# Declare a new task context (i.e., a component)
+#
+# The corresponding C++ class can be edited in tasks/Task.hpp and
+# tasks/Task.cpp, and will be put in the shark_slam namespace.
+task_context "Task" do
+    # This is the default from now on, and should not be removed. Rock will
+    # transition to a setup where all components use a configuration step.
+    needs_configuration
+
+    #**************************
+    #***** Task Properties ****
+    #**************************
+    property('world_frame', '/std/string').
+        doc 'Name of the world frame with respect the pose is taken'
+
+    #****************************
+    #***** Sensor Properties ****
+    #****************************
+    property "gyrorw", "/base/Vector3d"
+        doc "White Noise: angle random walk for gyroscopes (rad/sqrt(s))"
+
+    property "gyrorrw", "/base/Vector3d"
+        doc "Bias Noise: rate random walk for gyroscopes (rad/s/sqrt(s))"
+
+    property "accrw", "/base/Vector3d"
+        doc "White Noise: angle random walk for accelerometers (rad/sqrt(s))"
+
+    property "accrrw", "/base/Vector3d"
+        doc "Bias Noise: rate random walk for accelerometers (rad/s/sqrt(s))"
+
+
+    #******************************
+    #******* Input ports  *********
+    #******************************
+    input_port('gps_pose_samples', '/base/samples/RigidBodyState').
+        needs_reliable_connection.
+        doc 'Delta pose displacement.'
+
+    input_port("imu_samples", "/base/samples/IMUSensors").
+        needs_reliable_connection.
+        doc 'IMU data values (acc, gyros and magn).'
+
+    ##########################
+    # Transformer
+    ##########################
+    transformer do
+        transform "gps", "body" # "Source IN target" convention
+        transform "imu", "body" # "Source IN target" convention
+        align_port("gps_pose_samples", 0)
+        align_port("imu_samples", 0)
+        max_latency(0.1)
+    end
+
+    #******************************
+    #******* Output ports  ********
+    #******************************
+    output_port('pose_samples_out', '/base/samples/RigidBodyState').
+        doc 'Corrected estimated robot pose from the SLAM.'
+
+    port_driven
+
+ end
+
