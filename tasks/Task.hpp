@@ -61,12 +61,14 @@ namespace shark_slam{
         /******************************************/
         /*** General Internal Storage Variables ***/
         /******************************************/
+        gtsam::NavState prev_state, prop_state;
+        gtsam::imuBias::ConstantBias prev_bias;
 
         /** GTSAM Factor graph **/
         boost::shared_ptr< gtsam::NonlinearFactorGraph > factor_graph;
 
         /** Values of the estimated quantities **/
-        boost::shared_ptr< gtsam::Values > estimate_values;
+        boost::shared_ptr< gtsam::Values > initial_values;
 
         /** IMU preintegrated measurements (Imufactor or CombinedImufactor) **/
         boost::shared_ptr< gtsam::PreintegrationType > imu_preintegrated;
@@ -154,6 +156,11 @@ namespace shark_slam{
          * before calling start() again.
          */
         void cleanupHook();
+
+        /** Optimize 
+         * @brief optimize the factor graph and get the results
+         * **/
+        void optimize();
     };
 }
 

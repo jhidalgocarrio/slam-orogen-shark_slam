@@ -33,17 +33,41 @@ Task::~Task()
 
 void Task::gps_pose_samplesTransformerCallback(const base::Time &ts, const ::base::samples::RigidBodyState &gps_pose_samples_sample)
 {
-    throw std::runtime_error("Transformer callback for gps_pose_samples not implemented");
 
+    /** New GPS sample: increase index **/
+    this->idx++;
+
+    /** Add GPS factor **/
     gtsam::noiseModel::Diagonal::shared_ptr correction_noise = gtsam::noiseModel::Isotropic::Sigma(3,1.0);
     gtsam::GPSFactor gps_factor(X(this->idx),gtsam::Point3(gps_pose_samples_sample.position), correction_noise);
     this->factor_graph->add(gps_factor);
+
+    /** Add ImuFactor **/
+    gtsam::PreintegratedImuMeasurements *preint_imu = dynamic_cast<gtsam::PreintegratedImuMeasurements*>(this->imu_preintegrated.get());
+
+    gtsam::ImuFactor imu_factor(X(this->idx-1), V(this->idx-1),
+                           X(this->idx), V(this->idx),
+                           B(this->idx-1),
+                           *preint_imu);
+    this->factor_graph->add(imu_factor);
+
+    /** Optimize **/
+    this->optimize();
+
+    /** Output the result **/
+    base::samples::RigidBodyState output_pose;
+    output_pose.time = gps_pose_samples_sample.time;
+    output_pose.position = this->prev_state.pose().translation();
+    output_pose.orientation = this->prev_state.pose().rotation().toQuaternion();
+    output_pose.velocity = this->prev_state.velocity();
+    _pose_samples_out.write(output_pose);
 
 }
 
 void Task::imu_samplesTransformerCallback(const base::Time &ts, const ::base::samples::IMUSensors &imu_samples_sample)
 {
-    throw std::runtime_error("Transformer callback for imu_samples not implemented");
+    /** Integrate the IMU samples in the preintegration **/
+    this->imu_preintegrated->integrateMeasurement(imu_samples_sample.acc, imu_samples_sample.gyro, _imu_samples_period.value());
 }
 
 /// The following lines are template definitions for the various state machine
@@ -93,12 +117,12 @@ bool Task::configureHook()
     gtsam::imuBias::ConstantBias prior_imu_bias;
 
     /** Create the estimated values **/
-    this->estimate_values.reset(new gtsam::Values());
+    this->initial_values.reset(new gtsam::Values());
 
     /** Add the initial values (pose, velocity and bias) **/
-    this->estimate_values->insert(X(this->idx), prior_pose);
-    this->estimate_values->insert(V(this->idx), prior_velocity);
-    this->estimate_values->insert(B(this->idx), prior_imu_bias);
+    this->initial_values->insert(X(this->idx), prior_pose);
+    this->initial_values->insert(V(this->idx), prior_velocity);
+    this->initial_values->insert(B(this->idx), prior_imu_bias);
 
     /** Assemble prior noise model and add it the graph. **/
     gtsam::noiseModel::Diagonal::shared_ptr pose_noise_model = gtsam::noiseModel::Diagonal::Sigmas((gtsam::Vector(6) << 0.01, 0.01, 0.01, 0.5, 0.5, 0.5).finished()); // rad,rad,rad,m, m, m
@@ -111,7 +135,7 @@ bool Task::configureHook()
 
     /** Add all prior factors (pose, velocity and bias) to the graph **/
     this->factor_graph->add(gtsam::PriorFactor<gtsam::Pose3>(X(this->idx), prior_pose, pose_noise_model));
-    this->factor_graph->add(gtsam::PriorFactor<gtsam::Vector3>(V(this->idx), prior_velocity,velocity_noise_model));
+    this->factor_graph->add(gtsam::PriorFactor<gtsam::Vector3>(V(this->idx), prior_velocity, velocity_noise_model));
     this->factor_graph->add(gtsam::PriorFactor<gtsam::imuBias::ConstantBias>(B(this->idx), prior_imu_bias, bias_noise_model));
 
     /** Initialize the measurement noise **/
@@ -132,6 +156,10 @@ bool Task::configureHook()
 
     this->imu_preintegrated.reset(new gtsam::PreintegratedImuMeasurements(p, prior_imu_bias));
 
+    /** Store previous state for the imu integration and the latest predicted outcome. **/
+    this->prev_state = gtsam::NavState(prior_pose, prior_velocity);
+    this->prop_state = this->prev_state;
+    this->prev_bias = prior_imu_bias;
 
     return true;
 }
@@ -159,9 +187,38 @@ void Task::cleanupHook()
 
     /** Reset GTSAM **/
     this->factor_graph.reset();
-    this->estimate_values.reset();
+    this->initial_values.reset();
     this->imu_preintegrated.reset();
 
     /** Reset estimation **/
     this->idx = 0;
+}
+
+void Task::optimize()
+{
+    /** Propagate the state and store in the values **/
+    this->prop_state = this->imu_preintegrated->predict(prev_state, prev_bias);//TODO perhaps move to imu method
+    this->initial_values->insert(X(this->idx), this->prop_state.pose());
+    this->initial_values->insert(V(this->idx), this->prop_state.v());
+    this->initial_values->insert(B(this->idx), this->prev_bias);
+
+    /** Optimize **/
+    gtsam::LevenbergMarquardtParams params;
+    params.orderingType = gtsam::Ordering::METIS;
+    gtsam::LevenbergMarquardtOptimizer optimizer (*(this->factor_graph), *(this->initial_values), params);
+    RTT::log(RTT::Warning)<<"[SHARK_SLAM OPTIMIZE] INITIAL_VALUES WITH: "<<this->initial_values->size()<<"\n";
+
+    /** Store in the values **/
+    gtsam::Values result = optimizer.optimize();
+
+    /** Overwrite the beginning of the preintegration for the next step. **/
+    this->prev_state = gtsam::NavState(result.at<gtsam::Pose3>(X(this->idx)),
+                        result.at<gtsam::Vector3>(V(this->idx)));
+    this->prev_bias = result.at<gtsam::imuBias::ConstantBias>(B(this->idx));
+
+    // Reset the preintegration object.
+    this->imu_preintegrated->resetIntegrationAndSetBias(prev_bias);
+
+
+    return;
 }
