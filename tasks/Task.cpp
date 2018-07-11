@@ -33,6 +33,22 @@ Task::~Task()
 
 void Task::gps_pose_samplesTransformerCallback(const base::Time &ts, const ::base::samples::RigidBodyState &gps_pose_samples_sample)
 {
+    #ifdef DEBUG_PRINTS
+    RTT::log(RTT::Warning)<<"[SHARK_SLAM GPS_POSE_SAMPLES] Received time-stamp: "<<gps_pose_samples_sample.time.toMicroseconds()<<RTT::endlog();
+    #endif
+
+    Eigen::Affine3d tf_body_gps; /** Transformer transformation **/
+    /** Get the transformation Tbody_sensor **/
+    if (_gps_frame.value().compare(_body_frame.value()) == 0)
+    {
+        tf_body_gps.setIdentity();
+    }
+    else if (!_gps2body.get(ts, tf_body_gps, false))
+    {
+        RTT::log(RTT::Fatal)<<"[SHARK_SLAM FATAL ERROR] No transformation provided."<<RTT::endlog();
+        return;
+    }
+
 
     /** New GPS sample: increase index **/
     this->idx++;
@@ -66,6 +82,10 @@ void Task::gps_pose_samplesTransformerCallback(const base::Time &ts, const ::bas
 
 void Task::imu_samplesTransformerCallback(const base::Time &ts, const ::base::samples::IMUSensors &imu_samples_sample)
 {
+    #ifdef DEBUG_PRINTS
+    RTT::log(RTT::Warning)<<"[SHARK_SLAM IMU_SAMPLES] Received time-stamp: "<<imu_samples_sample.time.toMicroseconds()<<RTT::endlog();
+    #endif
+
     /** Integrate the IMU samples in the preintegration **/
     this->imu_preintegrated->integrateMeasurement(imu_samples_sample.acc, imu_samples_sample.gyro, _imu_samples_period.value());
 }
