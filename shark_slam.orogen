@@ -28,8 +28,6 @@ task_context "Task" do
     #**************************
     #***** Task Properties ****
     #**************************
-    property('world_frame', '/std/string').
-        doc 'Name of the world frame with respect the pose is taken'
 
     #****************************
     #***** Sensor Properties ****
@@ -62,6 +60,7 @@ task_context "Task" do
     # Transformer
     ##########################
     transformer do
+        transform "navigation", "world" # "Source IN target" convention
         transform "gps", "body" # "Source IN target" convention
         transform "imu", "body" # "Source IN target" convention
         align_port("gps_pose_samples", 0)
