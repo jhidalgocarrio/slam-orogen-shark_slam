@@ -56,7 +56,9 @@ namespace shark_slam{
         /**************************/
         /*** Property Variables ***/
         /**************************/
-
+        gtsam::noiseModel::Diagonal::shared_ptr pose_noise_model;
+        gtsam::noiseModel::Diagonal::shared_ptr velocity_noise_model;
+        gtsam::noiseModel::Diagonal::shared_ptr bias_noise_model;
 
         /******************************************/
         /*** General Internal Storage Variables ***/
