@@ -54,6 +54,12 @@ namespace shark_slam{
         unsigned long int idx;
 
         /**************************/
+        /***    Input Ports     ***/
+        /**************************/
+        base::samples::RigidBodyState gps_pose_samples;
+        base::samples::IMUSensors imu_samples;
+
+        /**************************/
         /*** Property Variables ***/
         /**************************/
         gtsam::noiseModel::Diagonal::shared_ptr pose_noise_model;
@@ -75,7 +81,10 @@ namespace shark_slam{
         /** IMU preintegrated measurements (Imufactor or CombinedImufactor) **/
         boost::shared_ptr< gtsam::PreintegrationType > imu_preintegrated;
 
-
+        /**************************/
+        /***   Output Ports     ***/
+        /**************************/
+        base::samples::RigidBodyState output_pose;
 
     protected:
 

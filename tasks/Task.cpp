@@ -37,6 +37,7 @@ void Task::gps_pose_samplesTransformerCallback(const base::Time &ts, const ::bas
     RTT::log(RTT::Warning)<<"[SHARK_SLAM GPS_POSE_SAMPLES] Received time-stamp: "<<gps_pose_samples_sample.time.toMicroseconds()<<RTT::endlog();
     #endif
 
+    /** Get the transformer **/
     Eigen::Affine3d tf_body_gps; /** Transformer transformation **/
     /** Get the transformation Tbody_sensor **/
     if (_gps_frame.value().compare(_body_frame.value()) == 0)
@@ -49,6 +50,35 @@ void Task::gps_pose_samplesTransformerCallback(const base::Time &ts, const ::bas
         return;
     }
 
+    std::cout<<"tf_body_gps is:\n"<<tf_body_gps.matrix()<<"\n";
+    std::cout<<"position(gps): "<<gps_pose_samples_sample.position<<"\n";
+
+    /** Store the gps samples in body frame **/
+    this->gps_pose_samples.time = gps_pose_samples_sample.time;
+    this->gps_pose_samples.position = tf_body_gps * gps_pose_samples_sample.position;
+    this->gps_pose_samples.velocity = tf_body_gps * gps_pose_samples_sample.velocity;
+    std::cout<<"position(body): "<<this->gps_pose_samples.position<<"\n";
+
+    /** Get the transformer **/
+    Eigen::Affine3d tf_world_nav; /** Transformer transformation **/
+    /** Get the transformation Tbody_sensor **/
+    if (_world_frame.value().compare(_navigation_frame.value()) == 0)
+    {
+        tf_world_nav.setIdentity();
+    }
+    else if (!_navigation2world.get(ts, tf_world_nav, false))
+    {
+        RTT::log(RTT::Fatal)<<"[SHARK_SLAM FATAL ERROR] No transformation provided."<<RTT::endlog();
+        return;
+    }
+
+    std::cout<<"tf_world_nav is:\n"<<tf_world_nav.matrix()<<"\n";
+
+    /** Store the gps samples in world frame **/
+    Eigen::Affine3d tf_nav_world = tf_world_nav.inverse(); /** Transformer transformation **/
+    this->gps_pose_samples.position = tf_nav_world * this->gps_pose_samples.position;
+    this->gps_pose_samples.velocity = tf_nav_world * this->gps_pose_samples.velocity;
+    std::cout<<"position(nav): "<<this->gps_pose_samples.position<<"\n";
 
     /** New GPS sample: increase index **/
     this->idx++;
@@ -69,19 +99,18 @@ void Task::gps_pose_samplesTransformerCallback(const base::Time &ts, const ::bas
 
     /** Add GPS factor **/
     gtsam::noiseModel::Diagonal::shared_ptr correction_noise = gtsam::noiseModel::Isotropic::Sigma(3,1.0);
-    //gtsam::GPSFactor gps_factor(X(this->idx),gtsam::Point3(gps_pose_samples_sample.position), correction_noise);
-    gtsam::GPSFactor gps_factor(X(this->idx),gtsam::Point3(Eigen::Vector3d::Zero()), correction_noise);
+    gtsam::GPSFactor gps_factor(X(this->idx),gtsam::Point3(this->gps_pose_samples.position), correction_noise);
+    //gtsam::GPSFactor gps_factor(X(this->idx),gtsam::Point3(Eigen::Vector3d::Zero()), correction_noise);
     this->factor_graph->add(gps_factor);
 
     /** Optimize **/
     this->optimize();
 
     /** Output the result **/
-    base::samples::RigidBodyState output_pose;
-    output_pose.time = gps_pose_samples_sample.time;
-    output_pose.position = this->prev_state.pose().translation();
-    output_pose.orientation = this->prev_state.pose().rotation().toQuaternion();
-    output_pose.velocity = this->prev_state.velocity();
+    this->output_pose.time = this->gps_pose_samples.time;
+    this->output_pose.position = this->prev_state.pose().translation();
+    this->output_pose.orientation = this->prev_state.pose().rotation().toQuaternion();
+    this->output_pose.velocity = this->prev_state.velocity();
     _pose_samples_out.write(output_pose);
 
 }
@@ -92,6 +121,7 @@ void Task::imu_samplesTransformerCallback(const base::Time &ts, const ::base::sa
     RTT::log(RTT::Warning)<<"[SHARK_SLAM IMU_SAMPLES] Received time-stamp: "<<imu_samples_sample.time.toMicroseconds()<<RTT::endlog();
     #endif
 
+    /** Get the transformer **/
     Eigen::Affine3d tf_body_imu; /** Transformer transformation **/
     /** Get the transformation Tbody_sensor **/
     if (_imu_frame.value().compare(_body_frame.value()) == 0)
@@ -104,9 +134,18 @@ void Task::imu_samplesTransformerCallback(const base::Time &ts, const ::base::sa
         return;
     }
 
+    std::cout<<"tf_body_imu is:\n"<<tf_body_imu.matrix()<<"\n";
+    std::cout<<"acc(imu): "<<imu_samples_sample.acc<<"\n";
+
+    /** Store the imu samples in body frame **/
+    this->imu_samples.time = imu_samples_sample.time;
+    this->imu_samples.acc = tf_body_imu * imu_samples_sample.acc;
+    this->imu_samples.gyro = tf_body_imu * imu_samples_sample.gyro;
+    this->imu_samples.mag = tf_body_imu * imu_samples_sample.mag;
+    std::cout<<"acc(body): "<<this->imu_samples.acc<<"\n";
 
     /** Integrate the IMU samples in the preintegration **/
-    this->imu_preintegrated->integrateMeasurement(imu_samples_sample.acc, imu_samples_sample.gyro, _imu_samples_period.value());
+    this->imu_preintegrated->integrateMeasurement(this->imu_samples.acc, this->imu_samples.gyro, _imu_samples_period.value());
 }
 
 /// The following lines are template definitions for the various state machine
@@ -199,6 +238,10 @@ bool Task::configureHook()
     this->prev_state = gtsam::NavState(prior_pose, prior_velocity);
     this->prop_state = this->prev_state;
     this->prev_bias = prior_imu_bias;
+
+    /** Initialize output port **/
+    this->output_pose.targetFrame = _body_frame.get();
+    this->output_pose.sourceFrame = _navigation_frame.get();
 
     return true;
 }
