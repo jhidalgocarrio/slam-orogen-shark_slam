@@ -19,6 +19,7 @@
 /** GTSAM optimizers **/
 #include <gtsam/nonlinear/LevenbergMarquardtOptimizer.h>
 #include <gtsam/nonlinear/NonlinearFactorGraph.h>
+#include <gtsam/nonlinear/ISAM2.h>
 #include <gtsam/inference/Symbol.h>
 
 namespace shark_slam{
@@ -50,6 +51,12 @@ namespace shark_slam{
         /*** Control Flow Variables ***/
         /******************************/
 
+        /** Initialization flag **/
+        bool init_flag;
+
+        /** Needs optimization **/
+        bool optimize_flag;
+
         /** Indices to identify estimates **/
         unsigned long int idx;
 
@@ -62,6 +69,17 @@ namespace shark_slam{
         /**************************/
         /*** Property Variables ***/
         /**************************/
+
+
+        /** IMU covariance matrices **/
+        gtsam::Matrix33 measured_acc_cov;
+        gtsam::Matrix33 measured_omega_cov; 
+        gtsam::Matrix33 integration_error_cov;
+        gtsam::Matrix33 bias_acc_cov;
+        gtsam::Matrix33 bias_omega_cov;
+        gtsam::Matrix66 bias_acc_omega_int;
+
+        /** Initial pose uncertainties **/
         gtsam::noiseModel::Diagonal::shared_ptr pose_noise_model;
         gtsam::noiseModel::Diagonal::shared_ptr velocity_noise_model;
         gtsam::noiseModel::Diagonal::shared_ptr bias_noise_model;
@@ -69,11 +87,17 @@ namespace shark_slam{
         /******************************************/
         /*** General Internal Storage Variables ***/
         /******************************************/
+
+        Eigen::Affine3d tf_init, tf_init_inverse; /** initial pose **/
+
         gtsam::NavState prev_state, prop_state;
         gtsam::imuBias::ConstantBias prev_bias;
 
         /** GTSAM Factor graph **/
         boost::shared_ptr< gtsam::NonlinearFactorGraph > factor_graph;
+
+        /** iSAM2 variable **/
+        boost::shared_ptr< gtsam::ISAM2 > isam;
 
         /** Values of the estimated quantities **/
         boost::shared_ptr< gtsam::Values > initial_values;
@@ -167,6 +191,10 @@ namespace shark_slam{
          * before calling start() again.
          */
         void cleanupHook();
+
+        /**@brief initialization
+         */
+        void initialization(Eigen::Affine3d &tf);
 
         /** Optimize 
          * @brief optimize the factor graph and get the results
