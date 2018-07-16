@@ -123,6 +123,7 @@ void Task::imu_samplesTransformerCallback(const base::Time &ts, const ::base::sa
 
     /** Get the transformer **/
     Eigen::Affine3d tf_body_imu; /** Transformer transformation **/
+    Eigen::Quaternion <double> qtf; /** Rotation part of the transformation in quaternion form **/
     /** Get the transformation Tbody_sensor **/
     if (_imu_frame.value().compare(_body_frame.value()) == 0)
     {
@@ -134,15 +135,17 @@ void Task::imu_samplesTransformerCallback(const base::Time &ts, const ::base::sa
         return;
     }
 
-    std::cout<<"tf_body_imu is:\n"<<tf_body_imu.matrix()<<"\n";
-    std::cout<<"acc(imu): "<<imu_samples_sample.acc<<"\n";
+    qtf = Eigen::Quaternion <double> (tf_body_imu.rotation());//!Quaternion from Body to imu (transforming samples from imu to body)
+
+    std::cout<<"acc(imu):\n"<<imu_samples_sample.acc<<"\n";
 
     /** Store the imu samples in body frame **/
     this->imu_samples.time = imu_samples_sample.time;
-    this->imu_samples.acc = tf_body_imu * imu_samples_sample.acc;
-    this->imu_samples.gyro = tf_body_imu * imu_samples_sample.gyro;
-    this->imu_samples.mag = tf_body_imu * imu_samples_sample.mag;
-    std::cout<<"acc(body): "<<this->imu_samples.acc<<"\n";
+    this->imu_samples.acc = qtf * imu_samples_sample.acc;
+    this->imu_samples.gyro = qtf * imu_samples_sample.gyro;
+    this->imu_samples.mag = qtf * imu_samples_sample.mag;
+    std::cout<<"acc(body):\n"<<this->imu_samples.acc<<"\n";
+    std::cout<<"gyro(body):\n"<<this->imu_samples.gyro<<"\n";
 
     /** Integrate the IMU samples in the preintegration **/
     this->imu_preintegrated->integrateMeasurement(this->imu_samples.acc, this->imu_samples.gyro, _imu_samples_period.value());
