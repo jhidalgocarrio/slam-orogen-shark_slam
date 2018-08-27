@@ -56,6 +56,10 @@ task_context "Task" do
         needs_reliable_connection.
         doc 'IMU data values (acc, gyros and magn).'
 
+    input_port("orientation_samples", "/base/samples/RigidBodyState").
+        needs_reliable_connection.
+        doc 'Orientation samples from the IMU.'
+
     ##########################
     # Transformer
     ##########################
@@ -65,6 +69,7 @@ task_context "Task" do
         transform "imu", "body" # "Source IN target" convention
         align_port("gps_pose_samples", 0)
         align_port("imu_samples", 0)
+        align_port("orientation_samples", 0)
         max_latency(0.1)
     end
 

@@ -37,7 +37,7 @@ void Task::gps_pose_samplesTransformerCallback(const base::Time &ts, const ::bas
     RTT::log(RTT::Warning)<<"[SHARK_SLAM GPS_POSE_SAMPLES] Received time-stamp: "<<gps_pose_samples_sample.time.toMicroseconds()<<RTT::endlog();
     #endif
 
-    if (!this->init_flag)
+    if (!this->inititialize && this->orientation_available)
     {
         /** Get the transformer **/
         Eigen::Affine3d tf_world_nav; /** Transformer transformation **/
@@ -79,7 +79,7 @@ void Task::gps_pose_samplesTransformerCallback(const base::Time &ts, const ::bas
         this->initialization(tf_init);
 
         /** Initialization succeeded **/
-        this->init_flag = true;
+        this->inititialize = true;
 
         /** Store the inverse of the initial transformation tf_gps_world **/
         this->tf_init_inverse = this->tf_init.inverse();
@@ -88,7 +88,7 @@ void Task::gps_pose_samplesTransformerCallback(const base::Time &ts, const ::bas
         RTT::log(RTT::Warning)<<"[DONE]\n";
         #endif
     }
-    else if (this->optimize_flag)
+    else if (this->inititialize && this->needs_optimization)
     {
         /** Store the gps samples in body frame **/
         this->gps_pose_samples.time = gps_pose_samples_sample.time;
@@ -139,7 +139,7 @@ void Task::imu_samplesTransformerCallback(const base::Time &ts, const ::base::sa
     RTT::log(RTT::Warning)<<"[SHARK_SLAM IMU_SAMPLES] Received time-stamp: "<<imu_samples_sample.time.toMicroseconds()<<RTT::endlog();
     #endif
 
-    if (this->init_flag)
+    if (this->inititialize)
     {
         /** Get the transformer **/
         Eigen::Affine3d tf_body_imu; /** Transformer transformation **/
@@ -170,7 +170,37 @@ void Task::imu_samplesTransformerCallback(const base::Time &ts, const ::base::sa
         /** Integrate the IMU samples in the preintegration **/
         this->imu_preintegrated->integrateMeasurement(this->imu_samples.acc, this->imu_samples.gyro, _imu_samples_period.value());
 
-        this->optimize_flag = true;
+        /** It can optimize after integrating an IMU measurement **/
+        this->needs_optimization = true;
+    }
+}
+void Task::orientation_samplesTransformerCallback(const base::Time &ts, const ::base::samples::RigidBodyState &orientation_samples_sample)
+{
+    #ifdef DEBUG_PRINTS
+    RTT::log(RTT::Warning)<<"[SHARK_SLAM ORIENTATION_SAMPLES] Received time-stamp: "<<orientation_samples_sample.time.toMicroseconds()<<RTT::endlog();
+    #endif
+
+    if (!this->orientation_available)
+    {
+        /** Get the transformer **/
+        Eigen::Affine3d tf_body_imu; /** Transformer transformation **/
+        Eigen::Quaternion <double> qtf; /** Rotation part of the transformation in quaternion form **/
+        /** Get the transformation Tbody_sensor **/
+        if (_imu_frame.value().compare(_body_frame.value()) == 0)
+        {
+            tf_body_imu.setIdentity();
+        }
+        else if (!_imu2body.get(ts, tf_body_imu, false))
+        {
+            RTT::log(RTT::Fatal)<<"[SHARK_SLAM FATAL ERROR] No transformation provided."<<RTT::endlog();
+            return;
+        }
+
+        qtf = Eigen::Quaternion <double> (tf_body_imu.rotation());//!Quaternion from Body to imu (transforming samples from imu to body)
+
+        /** Transform the orientation world(osg)_imu to world(osg)_body **/
+        this->orientation_samples.orientation = orientation_samples_sample.orientation * qtf.inverse();
+        this->orientation_available = true;
     }
 }
 
@@ -187,7 +217,9 @@ bool Task::configureHook()
     /*** Control Flow Variables ***/
     /******************************/
 
-    this->init_flag = false;
+    this->inititialize = false; //No initialization
+    this->needs_optimization = false; //No optimize until we receive an IMU measurement
+    this->orientation_available = false; //No orientation until we receive a orientation measurement
 
     /***************************/
     /**    IMU Noise Init     **/
@@ -363,7 +395,7 @@ void Task::optimize()
     this->imu_preintegrated->resetIntegrationAndSetBias(prev_bias);
 
     /** Mark as optimized **/
-    this->optimize_flag = false;
+    this->needs_optimization = false;
 
     return;
 }

@@ -52,10 +52,13 @@ namespace shark_slam{
         /******************************/
 
         /** Initialization flag **/
-        bool init_flag;
+        bool inititialize;
+
+        /** Orientation is available from IMU **/
+        bool orientation_available;
 
         /** Needs optimization **/
-        bool optimize_flag;
+        bool needs_optimization;
 
         /** Indices to identify estimates **/
         unsigned long int idx;
@@ -65,6 +68,7 @@ namespace shark_slam{
         /**************************/
         base::samples::RigidBodyState gps_pose_samples;
         base::samples::IMUSensors imu_samples;
+        base::samples::RigidBodyState orientation_samples;
 
         /**************************/
         /*** Property Variables ***/
@@ -115,6 +119,8 @@ namespace shark_slam{
         virtual void gps_pose_samplesTransformerCallback(const base::Time &ts, const ::base::samples::RigidBodyState &gps_pose_samples_sample);
 
         virtual void imu_samplesTransformerCallback(const base::Time &ts, const ::base::samples::IMUSensors &imu_samples_sample);
+
+        virtual void orientation_samplesTransformerCallback(const base::Time &ts, const ::base::samples::RigidBodyState &orientation_samples_sample);
 
     public:
         /** TaskContext constructor for Task
