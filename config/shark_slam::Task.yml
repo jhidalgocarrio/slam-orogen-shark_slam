@@ -1,0 +1,59 @@
+--- name:default
+# Name of the world frame with respect the pose is taken
+world_frame: world
+#world_frame: navigation
+
+# Intermediate navigation frame between world and body. In case of any otherwise
+# name it equal to world_frame
+navigation_frame: navigation
+
+# the global name that should be used for the internal body frame
+body_frame: body
+
+# the global name that should be used for the internal imu frame
+imu_frame: imu
+
+# the global name that should be used for the internal gps frame
+gps_frame: body
+
+# ***** Sensor Properties ****
+# no documentation available for this property
+accrw:
+  data:
+  - 0.0009531720
+  - 0.001048870
+  - 0.001022390
+# no documentation available for this property
+accrrw:
+  data:
+  - 1.434889e-05
+  - 9.549511e-06
+  - 1.436321e-05
+
+# no documentation available for this property
+gyrorw:
+  data:
+  - 4.655430e-05
+  - 4.384513e-05
+  - 4.298269e-05
+gyrorrw:
+  data:
+  - 2.924086e-07
+  - 2.591558e-07
+  - 5.058095e-08
+
+# Time in s between imu_samples readings
+imu_samples_period: 0.008
+
+# Time in s between gps_pose_samples readings
+gps_pose_samples_period: 0.2
+
+# Maximum time in seconds the transformer will wait until it starts dropping samples
+transformer_max_latency: 0.1
+# Minimum system time in seconds between two updates of the status ports
+transformer_status_period: 1.0
+
+# list of static transformations
+static_transformations: []
+
+
